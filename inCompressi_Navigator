@@ -1,0 +1,685 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+import sys
+import os
+sys.path.append('lib/')
+# libs needed by pyinstaller because they are imported by files that are imported here by the navigator !!
+from twisted.python.util import println
+#
+import SubseqPicker
+import inCompressi
+import resource
+from PySide import QtGui
+import subprocess
+import ConfigParser
+from PySide import QtCore
+
+#class Communicate(QtCore.QObject):
+#    
+#    updateBW = QtCore.Signal(int)
+#
+#class BurningWidget(QtGui.QWidget):
+#  
+#    def __init__(self):      
+#        super(BurningWidget, self).__init__()
+#        
+#        self.initUI()
+#        
+#    def initUI(self):
+#        
+#        self.setMinimumSize(1, 30)
+#        self.value = 0
+#        self.num = [0, 100000, 200000, 300, 375, 450, 525, 600, 675]        
+#
+#
+#    def setValue(self, value):
+#
+#        self.value = value
+#
+#
+#    def paintEvent(self, e):
+#      
+#        qp = QtGui.QPainter()
+#        qp.begin(self)
+#        self.drawWidget(qp)
+#        qp.end()
+#      
+#      
+#    def drawWidget(self, qp):
+#      
+#        font = QtGui.QFont('Serif', 7, QtGui.QFont.Light)
+#        qp.setFont(font)
+#
+#        size = self.size()
+#        w = size.width()
+#        h = size.height()
+#
+#        step = int(round(w / 10.0))
+#
+#
+#        till = int(((w / 750.0) * self.value))
+#        full = int(((w / 750.0) * 700))
+#
+#        if self.value >= 700:
+#            qp.setPen(QtGui.QColor(255, 255, 255))
+#            qp.setBrush(QtGui.QColor(255, 255, 184))
+#            qp.drawRect(0, 0, full, h)
+#            qp.setPen(QtGui.QColor(255, 175, 175))
+#            qp.setBrush(QtGui.QColor(255, 175, 175))
+#            qp.drawRect(full, 0, till-full, h)
+#        else:
+#            qp.setPen(QtGui.QColor(255, 255, 255))
+#            qp.setBrush(QtGui.QColor(255, 255, 184))
+#            qp.drawRect(0, 0, till, h)
+#
+#
+#        pen = QtGui.QPen(QtGui.QColor(20, 20, 20), 1, 
+#            QtCore.Qt.SolidLine)
+#            
+#        qp.setPen(pen)
+#        qp.setBrush(QtCore.Qt.NoBrush)
+#        qp.drawRect(0, 0, w-1, h-1)
+#
+#        j = 0
+#
+#        for i in range(step, 10*step, step):
+#          
+#            qp.drawLine(i, 0, i, 5)
+#            metrics = qp.fontMetrics()
+#            fw = metrics.width(str(self.num[j]))
+#            qp.drawText(i-fw/2, h/2, str(self.num[j]))
+#            j = j + 1
+
+
+
+class inCompressiGUI(QtGui.QMainWindow):
+    
+    def __init__(self):
+        super(inCompressiGUI, self).__init__()
+        
+        self.initUI()
+        
+    def initUI(self):
+        #.............................................. Layout ...........................................#
+        #.............................................. Layout ...........................................#
+        #.............................................. Layout ...........................................#
+
+#        exitAction = QtGui.QAction(QtGui.QIcon('exit.png'), '&Exit', self)
+#        exitAction.setShortcut('Ctrl+Q')
+#        exitAction.setStatusTip('Exit application')
+#        exitAction.triggered.connect(self.close)
+#	## menu bar
+#        menubar = self.menuBar()
+#        fileMenu = menubar.addMenu('&File')
+#        fileMenu.addAction(exitAction)
+#	## tool bar
+#        self.toolbar = self.addToolBar('Exit')
+#        self.toolbar.addAction(exitAction)
+#
+#	## status bar
+#        self.statusBar().showMessage('Ready')
+    
+    ## create layout & controls
+    
+        #.............................................. Browsing ...........................................#
+        #.............................................. Browsing ...........................................#
+
+        self.lblWhichChromo = QtGui.QLabel("Which Chromosome")
+        self.comboWhichChromo = QtGui.QComboBox()
+        self.comboWhichChromo.addItem("Which Chromosome")
+        self.comboWhichChromo.addItem("1")
+        self.comboWhichChromo.addItem("2")
+        self.comboWhichChromo.addItem("3")
+        self.comboWhichChromo.addItem("4")
+        self.comboWhichChromo.addItem("5")
+        self.comboWhichChromo.activated[str].connect(self.onComboWhichChromoActivated)
+        self.lblChromoLength = QtGui.QLabel("")
+
+        self.lblQueryLength = QtGui.QLabel('Query Length')
+        self.comboQueryLength = QtGui.QComboBox()
+        self.comboQueryLength.addItem("Query Length")
+        self.comboQueryLength.addItem("50")
+        self.comboQueryLength.addItem("100")
+        self.comboQueryLength.addItem("500")
+        self.comboQueryLength.addItem("1000")
+        self.comboQueryLength.addItem("5000")
+        self.comboQueryLength.addItem("10000")
+        self.comboQueryLength.addItem("50000")
+        self.comboQueryLength.activated[str].connect(self.onComboQueryLengthActivated)
+        self.lblCurrentOffset = QtGui.QLabel('Current Offset: ')
+        self.txtChromoOffsetStart = QtGui.QLineEdit('0')
+        self.txtChromoOffsetStart.setValidator(QtGui.QIntValidator())
+        self.txtChromoOffsetStart.textChanged[str].connect(self.onChromoCurrentOffsetChanged)
+        self.lblActualQueryLength = QtGui.QLabel('')
+        self.lblChromoEnd = QtGui.QLabel('')
+#        color = QtGui.QColor(0, 0, 0)
+#        color.setNamedColor('#ff0000')
+#        self.lblChromoEnd.backColor = color
+        ##self.lblChromoEnd.font. = 1
+        ##self.lblChromoEnd.ForegroundColour = QtGui.Color.Red  
+        
+        self.sldChromoOffset = QtGui.QSlider(QtCore.Qt.Horizontal)
+        self.sldChromoOffset.setFocusPolicy(QtCore.Qt.NoFocus)
+        #self.sldChromoOffset.setGeometry(30, 40, 100, 30)
+        self.sldChromoOffset.valueChanged[int].connect(self.sldChromoOffsetChanged)
+        self.oldtick = 0
+        
+        self.btnBrowseNext = QtGui.QPushButton(' >> ')
+        self.btnBrowseNext.clicked.connect(self.btnBrowseNextClicked)
+        self.btnBrowseNext.setVisible(False) 
+        self.btnBrowsePrev = QtGui.QPushButton(' << ')
+        self.btnBrowsePrev.clicked.connect(self.btnBrowsePrevClicked) 
+        self.btnBrowsePrev.setVisible(False) 
+
+        self.txtCompressedCntnt = QtGui.QTextEdit()
+        self.txtCompressedCntnt.setReadOnly(1)
+
+#        self.comm = Communicate()
+#        self.wid = BurningWidget()
+#        self.comm.updateBW[int].connect(self.wid.setValue)        
+
+                
+        self.lblTimeInMsec = QtGui.QLabel('')
+        self.lblMemoryInMB = QtGui.QLabel('')
+    
+        grid = QtGui.QGridLayout()
+        grid.setSpacing(10)
+                
+        chromoInfo = QtGui.QHBoxLayout()
+        chromoInfo.addWidget(self.comboWhichChromo)
+        chromoInfo.addWidget(self.lblChromoLength)
+        chromoInfo.addStretch(1)
+        grid.addLayout(chromoInfo, 0, 0)
+
+        queryInfo = QtGui.QHBoxLayout()
+        queryInfo.addWidget(self.comboQueryLength)
+        queryInfo.addWidget(self.lblCurrentOffset)
+        queryInfo.addWidget(self.txtChromoOffsetStart)
+        queryInfo.addWidget(self.lblActualQueryLength)
+        queryInfo.addWidget(self.lblChromoEnd)
+        queryInfo.addStretch(1)
+        grid.addLayout(queryInfo, 1, 0)
+
+        BrowseBox = QtGui.QHBoxLayout()
+        BrowseBox.addWidget(self.btnBrowsePrev)
+        BrowseBox.addWidget(self.sldChromoOffset)
+        BrowseBox.addWidget(self.btnBrowseNext)
+        grid.addLayout(BrowseBox, 2, 0)
+        
+        grid.addWidget(self.txtCompressedCntnt, 4, 0)
+        
+        infoLbls = QtGui.QHBoxLayout()
+        infoLbls.addWidget(self.lblTimeInMsec)
+        infoLbls.addWidget(self.lblMemoryInMB)
+        infoLbls.addStretch(1)
+        grid.addLayout(infoLbls, 5, 0)
+
+        BrowseWidget = QtGui.QWidget()
+        BrowseWidget.setLayout(grid)
+        
+        #.............................................. Searching ...........................................#
+        #.............................................. Searching ...........................................#
+        
+        grid2 = QtGui.QGridLayout()
+        grid2.setSpacing(10)
+
+        self.lblWhichChromo2 = QtGui.QLabel("Which Chromosome")
+        self.comboWhichChromo2 = QtGui.QComboBox()
+        self.comboWhichChromo2.addItem("Which Chromosome")
+        self.comboWhichChromo2.addItem("1")
+        self.comboWhichChromo2.addItem("2")
+        self.comboWhichChromo2.addItem("3")
+        self.comboWhichChromo2.addItem("4")
+        self.comboWhichChromo2.addItem("5")
+        self.comboWhichChromo2.activated[str].connect(self.onComboWhichChromo2Activated)
+        self.lblChromoLength2 = QtGui.QLabel("")
+
+        self.lblPattern = QtGui.QLabel('Pattern: ')
+        self.txtPattern = QtGui.QLineEdit('GGCGTGTGGTT')
+        ###################self.txtPattern.setSize()
+        ###################self.txtPattern.setValidator(QtGui.Q)
+        self.btnSearch = QtGui.QPushButton('Search')
+        self.btnSearch.clicked.connect(self.btnSearchClicked) 
+        self.btnBrowseHit = QtGui.QPushButton('Browse selected hit?')
+        self.btnBrowseHit.clicked.connect(self.btnHitClicked)
+        self.btnBrowseHit.setVisible(False) 
+#        self.iconSearch = QtGui.QMovie('pics/progress2.gif')
+#        self.lblSearch = QtGui.QLabel()
+#        self.lblSearch.setVisible(False)          
+#        self.lblSearch.setMovie(self.iconSearch)
+#        self.iconSearch.start()
+#        self.iconSearch.setVisible(False)
+
+        self.searchHits = QtGui.QListWidget()
+        self.searchHits.itemDoubleClicked.connect(self.hitDoubleClicked)
+        
+
+        self.lblTimeInMsec2 = QtGui.QLabel('')
+        self.lblMemoryInMB2 = QtGui.QLabel('')
+
+        chromoInfo2 = QtGui.QHBoxLayout()
+        chromoInfo2.addWidget(self.comboWhichChromo2)
+        chromoInfo2.addWidget(self.lblChromoLength2)
+        chromoInfo2.addStretch(1)
+        grid2.addLayout(chromoInfo2, 0, 0)
+
+        searchInfo = QtGui.QHBoxLayout()
+        searchInfo.addWidget(self.lblPattern)
+        searchInfo.addWidget(self.txtPattern)
+        searchInfo.addWidget(self.btnSearch)
+ #       searchInfo.addWidget(self.lblSearch)
+        searchInfo.addWidget(self.btnBrowseHit)
+        searchInfo.addStretch(1)
+        grid2.addLayout(searchInfo, 1, 0)
+        
+        hitsInfo  = QtGui.QHBoxLayout()
+        hitsInfo.addWidget(self.searchHits)
+        hitsInfo.addStretch(1)
+        grid2.addLayout(hitsInfo, 2, 0)
+
+        infoLbls2 = QtGui.QHBoxLayout()
+        infoLbls2.addWidget(self.lblTimeInMsec2)
+        infoLbls2.addWidget(self.lblMemoryInMB2)
+        infoLbls2.addStretch(1)
+        grid2.addLayout(infoLbls2, 3, 0)
+
+        SearchWidget = QtGui.QWidget()
+        SearchWidget.setLayout(grid2)
+
+        #.......................................................................................................#
+         
+        self.tabBar = QtGui.QTabWidget()
+        self.tabBar.addTab(BrowseWidget, 'Browse')
+        self.tabBar.addTab(SearchWidget, 'Search')
+
+        self.setCentralWidget(self.tabBar)
+        
+	    ## window properties
+        self.setGeometry(300, 300, 800, 600)
+        qr = self.frameGeometry()
+        cp = QtGui.QDesktopWidget().availableGeometry().center()
+        qr.moveCenter(cp)
+        self.move(qr.topLeft())
+        self.setWindowTitle('Welcome to inCompressi Navigator - v1.0 ...')
+        self.show()
+    
+        #.............................................. Handlers ...........................................#
+        #.............................................. Handlers ...........................................#
+        #.............................................. Handlers ...........................................#
+    def sldReset(self):
+        self.sldChromoOffset.valueChanged[int].disconnect()
+        self.txtChromoOffsetStart.setText('0')
+        self.oldtick = 0
+        self.sldChromoOffset.setValue(0)
+        self.sldChromoOffset.valueChanged[int].connect(self.sldChromoOffsetChanged)
+        self.txtCompressedCntnt.setText('')
+        self.CallInCompressiBrowser()
+
+    def onComboQueryLengthActivated(self, text):
+        self.lblQueryLength.setText(text)
+        self.lblActualQueryLength.setText('')
+        if self.validateBrowsingInputs(0) == 1:
+            self.sldReset()
+
+        #.................................................................................................................#
+
+    def onComboWhichChromoActivated(self, text):
+        self.lblWhichChromo.setText(text)
+        if self.lblWhichChromo.text() <> "Which Chromosome":
+            params = ConfigParser.ConfigParser()
+            params.read('inCompressi.in.cnfg')
+            refFile = params.get('parameters', 'reference_file')
+            outHead = params.get('parameters', 'path_to_compressed')
+            chromoLen = inCompressi.getTotalChromosomeLengthFromScratch(refFile, int(text)-1, outHead)
+            self.lblChromoLength.setText('Chromosome Length: ' + str(chromoLen))
+        else:
+            self.lblChromoLength.setText('')
+        self.txtChromoOffsetStart.setText('0')
+        self.lblActualQueryLength.setText('')      
+        if self.validateBrowsingInputs(0) == 1:
+            self.sldReset()
+
+    def onComboWhichChromo2Activated(self, text):
+        self.lblWhichChromo2.setText(text)
+        if self.lblWhichChromo2.text() <> "Which Chromosome":
+            params = ConfigParser.ConfigParser()
+            params.read('inCompressi.in.cnfg')
+            refFile = params.get('parameters', 'reference_file')
+            outHead = params.get('parameters', 'path_to_compressed')
+            chromoLen = inCompressi.getTotalChromosomeLengthFromScratch(refFile, int(text)-1, outHead)
+            self.lblChromoLength2.setText('Chromosome Length: ' + str(chromoLen))
+        else:
+            self.lblChromoLength2.setText('')
+
+        #.................................................................................................................#
+
+    def sldChromoOffsetChanged(self, newtick):
+        if self.validateBrowsingInputs(1) == 0:
+            self.sldReset()
+            return
+#        if newtick == 99:
+#          self.oldtick = 0  
+#          self.sldChromoOffset.setValue(1)
+#          return
+#        elif newtick == 0:
+#          self.oldtick = 99
+#          self.sldChromoOffset.setValue(98)
+#          return  
+                
+#        if self.lblQueryLength.text() == "Query Length":
+#          self.lblQueryLength.setText('100')
+#          self.comboQueryLength.setCurrentIndex(self.comboQueryLength.findText('100'))
+#        else:
+#          self.comboQueryLength.setCurrentIndex(self.comboQueryLength.findText(self.lblQueryLength.text()))
+          
+        if newtick == 0:
+            self.btnBrowsePrev.setVisible(True)
+        elif newtick == 99:    
+            self.btnBrowseNext.setVisible(True)
+        else:
+            self.btnBrowsePrev.setVisible(False)    
+            self.btnBrowseNext.setVisible(False)    
+          
+        if self.txtChromoOffsetStart.text() == '':
+          self.txtChromoOffsetStart.setText('0')   
+        currentOffset = int(self.txtChromoOffsetStart.text())
+        newOffset = currentOffset+(newtick-self.oldtick)*int(self.lblQueryLength.text())
+        chromoLen = self.lblChromoLength.text()
+        chromoLen = chromoLen[19:]
+        chromoLen = int(chromoLen)
+        if newOffset >= chromoLen:
+          if self.lblChromoEnd.text() == '':
+            self.lblChromoEnd.setText('(End)')
+          self.btnBrowseNext.setVisible(False)
+          return
+        elif newOffset == 0:
+          if self.lblChromoEnd.text() == '':
+            self.lblChromoEnd.setText('(Start)')        
+            self.btnBrowsePrev.setVisible(False)
+            #return
+        else:
+          self.lblChromoEnd.setText('')
+              
+        params = ConfigParser.ConfigParser()
+        params.read('inCompressi.in.cnfg')
+        params.set('parameters', 'query_start', newOffset)
+        params.set('parameters', 'query_length', self.lblQueryLength.text())
+
+        with open('inCompressi.in.cnfg', 'wb') as paramsFile:
+          params.write(paramsFile)
+        self.CallInCompressiBrowser()
+        self.oldtick = newtick   
+    
+        #.................................................................................................................#
+
+    def onChromoCurrentOffsetChanged(self, text):
+#      if self.txtChromoOffsetStart.text() == '':
+#          self.txtChromoOffsetStart.setText('0')  
+      if text <> '' and self.lblWhichChromo.text() <> "Which Chromosome":        
+          chromoLen = self.lblChromoLength.text()
+          chromoLen = chromoLen[19:]
+          chromoLen = int(chromoLen)
+          params = ConfigParser.ConfigParser()
+          params.read('inCompressi.in.cnfg')
+          if int(text) > chromoLen:
+            self.txtChromoOffsetStart.setText(str(chromoLen))
+            params.set('parameters', 'query_start', str(chromoLen))          
+          else:      
+            params.set('parameters', 'query_start', text)              
+          with open('inCompressi.in.cnfg', 'wb') as paramsFile:
+            params.write(paramsFile)
+
+        #.................................................................................................................#
+
+    def btnBrowseNextClicked(self):
+        if self.validateBrowsingInputs(1) == 0:
+            self.sldReset()            
+            return
+        currentOffset = self.txtChromoOffsetStart.text()
+        self.oldtick = 0
+        self.sldChromoOffset.setValue(0)
+        configs = ConfigParser.ConfigParser()
+        configs.read('inCompressi.in.cnfg')
+        configs.set('flags', 'pick_or_search', 'pick')
+        if currentOffset <> 0:          
+          configs.set('parameters', 'query_start', currentOffset)
+          self.txtChromoOffsetStart.setText(currentOffset)          
+        with open('inCompressi.in.cnfg', 'wb') as configsFile:
+          configs.write(configsFile)        
+        self.CallInCompressiBrowser()
+        self.btnBrowseNext.setVisible(False)
+
+        #.................................................................................................................#
+
+    def btnBrowsePrevClicked(self):
+        if self.validateBrowsingInputs(1) == 0:
+            self.sldReset()            
+            return
+        currentOffset = self.txtChromoOffsetStart.text()
+        self.oldtick = 99
+        self.sldChromoOffset.setValue(99)
+        configs = ConfigParser.ConfigParser()
+        configs.read('inCompressi.in.cnfg')
+        configs.set('flags', 'pick_or_search', 'pick')
+        if currentOffset <> 0:          
+          configs.set('parameters', 'query_start', currentOffset)
+          self.txtChromoOffsetStart.setText(currentOffset)          
+        with open('inCompressi.in.cnfg', 'wb') as configsFile:
+          configs.write(configsFile)        
+        self.CallInCompressiBrowser()
+        self.btnBrowsePrev.setVisible(False)
+
+        #.................................................................................................................#
+
+    def validateBrowsingInputs(self, showMsg):
+        goAhead = 1
+        if not os.path.exists('./inCompressi_Browser'):
+          if showMsg == 1:  
+              msgBox = QtGui.QMessageBox()
+              msgBox.setText("Error calling inCompressi_Browser!")
+              msgBox.setInformativeText("Please check the existance of that file and try again ...")
+              msgBox.setIcon(QtGui.QMessageBox.Critical)
+              ret = msgBox.exec_()
+          goAhead = 0
+
+        if goAhead == 1 and self.lblWhichChromo.text() == "Which Chromosome":
+          if showMsg == 1:  
+              msgBox = QtGui.QMessageBox()
+              msgBox.setText("Please select a chromosome to browse!")
+              #msgBox.setInformativeText("Please check the existance of that file and try again ...")
+              msgBox.setIcon(QtGui.QMessageBox.Information)
+              ret = msgBox.exec_()
+          goAhead = 0
+
+        if goAhead == 1 and self.lblQueryLength.text() == "Query Length":
+          if showMsg == 1:  
+              msgBox = QtGui.QMessageBox()
+              msgBox.setText("Please select a Query Length!")
+              #msgBox.setInformativeText("Please check the existance of that file and try again ...")
+              msgBox.setIcon(QtGui.QMessageBox.Information)
+              ret = msgBox.exec_()
+          goAhead = 0
+
+#        if goAhead == 0:
+#            self.sldChromoOffset.setValue(0)
+        return goAhead
+            
+        #.................................................................................................................#
+
+    def validateSearchingInputs(self, showMsg):
+        goAhead = 1
+        if not os.path.exists('./inCompressi_Browser'):
+          if showMsg == 1:  
+              msgBox = QtGui.QMessageBox()
+              msgBox.setText("Error calling inCompressi_Browser!")
+              msgBox.setInformativeText("Please check the existance of that file and try again ...")
+              msgBox.setIcon(QtGui.QMessageBox.Critical)
+              ret = msgBox.exec_()
+          goAhead = 0
+
+        if goAhead == 1 and self.lblWhichChromo2.text() == "Which Chromosome":
+          if showMsg == 1:  
+              msgBox = QtGui.QMessageBox()
+              msgBox.setText("Please select a chromosome to search!")
+              msgBox.setIcon(QtGui.QMessageBox.Information)
+              ret = msgBox.exec_()
+          goAhead = 0
+
+        if goAhead == 1 and self.txtPattern.text() == "":
+          if showMsg == 1:  
+              msgBox = QtGui.QMessageBox()
+              msgBox.setText("Please enter a pattern to search for!")
+              msgBox.setIcon(QtGui.QMessageBox.Information)
+              ret = msgBox.exec_()
+          goAhead = 0
+        
+        return goAhead
+    
+        #.................................................................................................................#
+        #.................................................................................................................#
+
+
+    def btnSearchClicked(self):
+        if self.validateSearchingInputs(1) == 0:
+          return
+        flags = ConfigParser.ConfigParser()
+        flags.read('inCompressi.in.cnfg')
+        flags.set('flags', 'pick_or_search', 'search')          
+        with open('inCompressi.in.cnfg', 'wb') as flagsFile:
+          flags.write(flagsFile)
+        self.btnSearch.setEnabled(False)
+#        self.lblSearch.setVisible(True)          
+        self.CallInCompressiSearcher()
+#        self.lblSearch.setVisible(False)          
+        self.btnSearch.setEnabled(True)      
+        self.btnBrowseHit.setVisible(True)    
+    
+    def btnHitClicked(self):
+        self.lblChromoLength.setText(self.lblChromoLength2.text())
+        self.comboWhichChromo.setCurrentIndex(self.comboWhichChromo2.findText(self.lblWhichChromo2.text()))
+        self.lblWhichChromo.setText(self.lblWhichChromo2.text())
+        self.comboQueryLength.setCurrentIndex(self.comboQueryLength.findText('100'))
+        self.lblQueryLength.setText('100')
+        self.txtChromoOffsetStart.setText(self.searchHits.selectedItems()[0].text())
+        self.CallInCompressiBrowser()
+        self.tabBar.setCurrentIndex(0)
+        pattern = self.txtPattern.text()
+        if pattern.find('-') == -1:
+            self.txtCompressedCntnt.find(pattern)
+        else:
+            dashIndx = pattern.find('-')
+            dashCount = pattern.count('-')
+            pattern1 = pattern[:dashIndx]
+            pattern2 = pattern[dashIndx+dashCount:]  
+            self.txtCompressedCntnt.find(pattern1)
+            #self.txtCompressedCntnt.find(pattern2)
+
+    def hitDoubleClicked(self, item):
+        self.lblChromoLength.setText(self.lblChromoLength2.text())
+        self.comboWhichChromo.setCurrentIndex(self.comboWhichChromo2.findText(self.lblWhichChromo2.text()))
+        self.lblWhichChromo.setText(self.lblWhichChromo2.text())
+        self.comboQueryLength.setCurrentIndex(self.comboQueryLength.findText('100'))
+        self.lblQueryLength.setText('100')
+        self.txtChromoOffsetStart.setText(self.searchHits.selectedItems()[0].text())
+        self.CallInCompressiBrowser()
+        self.tabBar.setCurrentIndex(0)
+        pattern = self.txtPattern.text()
+        if pattern.find('-') == -1:
+            self.txtCompressedCntnt.find(pattern)
+        else:
+            dashIndx = pattern.find('-')
+            dashCount = pattern.count('-')
+            pattern1 = pattern[:dashIndx]
+            pattern2 = pattern[dashIndx+dashCount:]  
+            self.txtCompressedCntnt.find(pattern1)
+            #self.txtCompressedCntnt.find(pattern2)
+        
+        #.............................................. inCompressi Navigation ...........................................#
+        #.............................................. inCompressi Navigation ...........................................#
+        #.............................................. inCompressi Navigation ...........................................#
+
+    def CallInCompressiBrowser(self):
+        self.SetInCompressiBrowserParamsAndFlags()
+        exitCode = subprocess.call(['sh', 'bridge.sh'])
+        if exitCode == 0:                
+            self.LoadInCompressiBrowseResults()
+                          
+        #.................................................................................................................#
+
+    def SetInCompressiBrowserParamsAndFlags(self):
+        params = ConfigParser.ConfigParser()
+        params.read('inCompressi.in.cnfg')
+
+        params.set('flags', 'pick_or_search', 'pick')
+
+        params.set('parameters', 'which_chromosome', self.lblWhichChromo.text())
+
+        params.set('parameters', 'reference_file', 'tair8_plain/chr' + self.lblWhichChromo.text() + '.fas')
+
+        params.set('parameters', 'query_length', self.lblQueryLength.text())
+
+        with open('inCompressi.in.cnfg', 'wb') as paramsFile:
+          params.write(paramsFile)
+    
+        #.................................................................................................................#
+
+    def LoadInCompressiBrowseResults(self):
+      config = ConfigParser.ConfigParser()
+      config.read('inCompressi.out.cnfg')
+      self.txtCompressedCntnt.setText(config.get('browse_output', 'sequence'))
+      self.lblActualQueryLength.setText('Actual Length: ' + config.get('browse_output', 'length_in_chars') + ' characters')
+      self.txtChromoOffsetStart.setText(config.get('browse_output', 'sequence_offset'))
+      self.lblTimeInMsec.setText('Time: ' + config.get('statistics', 'time_in_msec') + ' msec')
+      self.lblMemoryInMB.setText('Memory: ' + config.get('statistics', 'memory_in_mb') + ' MB')
+        
+
+    def CallInCompressiSearcher(self):
+        self.SetInCompressiSearcherParamsAndFlags()
+        exitCode = subprocess.call(['sh', 'bridge.sh'])
+        if exitCode == 0:                
+            self.LoadInCompressiSearchResults()
+
+    def SetInCompressiSearcherParamsAndFlags(self):
+        params = ConfigParser.ConfigParser()
+        params.read('inCompressi.in.cnfg')
+
+        params.set('parameters', 'which_chromosome', self.lblWhichChromo2.text())
+
+        params.set('parameters', 'reference_file', 'tair8_plain/chr' + self.lblWhichChromo2.text() + '.fas')
+
+        params.set('parameters', 'query_start', '0')       ## searching the entire chromosome
+        params.set('parameters', 'query_length', '0')       ## searching the entire chromosome
+
+        params.set('parameters', 'search_queries', self.txtPattern.text())
+
+        with open('inCompressi.in.cnfg', 'wb') as paramsFile:
+          params.write(paramsFile)
+    
+        #.................................................................................................................#
+
+    def LoadInCompressiSearchResults(self):
+      config = ConfigParser.ConfigParser()
+      config.read('inCompressi.out.cnfg')
+      hits = config.get('search_output', 'hits')
+      self.searchHits.clear()
+      self.searchHits.addItems(hits.split(','))
+      #self.lblActualQueryLength.setText('Actual Length: ' + config.get('search_output', 'length_in_chars') + ' characters')
+      #self.txtChromoOffsetStart.setText(config.get('search_output', 'sequence_offset'))
+      self.lblTimeInMsec2.setText('Time: ' + config.get('statistics', 'time_in_msec') + ' msec')
+      self.lblMemoryInMB2.setText('Memory: ' + config.get('statistics', 'memory_in_mb') + ' MB')
+        
+        #.............................................. Program Main ...........................................#
+        #.............................................. Program Main ...........................................#
+        #.............................................. Program Main ...........................................#
+
+def main():
+    
+    app = QtGui.QApplication(sys.argv)
+    ex = inCompressiGUI()
+    sys.exit(app.exec_())
+
+
+if __name__ == '__main__':
+    main()
+

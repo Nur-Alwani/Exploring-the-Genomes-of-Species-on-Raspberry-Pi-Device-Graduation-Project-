@@ -1,0 +1,159 @@
+#!/usr/bin/python
+import sys
+import SubseqPicker
+sys.path.append('lib/')
+import os
+import loc
+import bits
+import huff
+import lzmatch
+import inCompressi
+from time import time
+from twisted.python.util import println
+import resource
+import ConfigParser
+
+############################################## LOADING CONFIGURATIONS ################################################################
+config = ConfigParser.ConfigParser()
+config.read('inCompressi.in.cnfg')
+
+# Get list of flags
+timing = config.getint('flags', 'timing_on')
+memory = config.getint('flags', 'memory_on')
+renderResultsToConsole = config.getint('flags', 'render_results_to_console')
+renderResultsToFile = config.getint('flags', 'render_results_to_file')
+pickOrSearch = config.get('flags', 'pick_or_search')
+
+# Get list of params
+BlockSize = config.getint('parameters', 'default_block_size')
+refFile = config.get('parameters', 'reference_file')
+whichChromosome = config.getint('parameters', 'which_chromosome') - 1
+subseqStart = config.getint('parameters', 'query_start')
+subseqLength = config.getint('parameters', 'query_length')
+outHead = config.get('parameters', 'path_to_compressed')
+
+searchIndcs = []
+
+if pickOrSearch == 'pick':
+  targetFile = config.get('parameters', 'target_file')
+  seq2Search4 = ''
+elif pickOrSearch == 'search':
+    targetFile = ''
+    seq2Search4 = config.get('parameters', 'search_queries')
+    seq2Search4 = seq2Search4.split(',')
+    searchIndcs = [[] for _ in range(len(seq2Search4))] 
+
+############################################## END LOADING CONFIGURATIONS ################################################################
+
+if(timing == 1):
+    t0 = time()
+
+## load the compressed data once
+(basePairsPerLine, numFiles, instructionList, subList, insList, delList) = inCompressi.loadEncodedLists(outHead)   
+
+extractedSeq = ''
+if whichChromosome <> -2:
+  if len(seq2Search4) == 0: #/// pick
+    (extractedSeq, hitsCount, targetLength) = inCompressi.manipulateSingleChromosome(refFile, whichChromosome, subseqStart, subseqLength, outHead, targetFile, BlockSize,
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+    if renderResultsToConsole == 1:
+      print "sequence :\n", extractedSeq, "\n"
+  else:
+    (seqIndcs, hitsCount) = inCompressi.searchSingleChromosome(refFile, whichChromosome, subseqStart, subseqLength, outHead, BlockSize, seq2Search4, searchIndcs,
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+    #print "%d hits -> " %len(seqIndcs), seqIndcs[:5], seqIndcs[-5:]
+    if renderResultsToConsole == 1:
+      for Indcs in searchIndcs: 
+        print "%d hits -> " %len(Indcs), "first 5 hits: ", Indcs[:5], "last 5 hits: ", Indcs[-5:]
+      println
+else:       # decompress all chromosomes (the whole genome)
+  overallHits = 0
+  ## reading the list of the reference/target chromosome file-names  
+  targetList    = []
+  referenceList = []
+  list_filename = config.get('parameters', 'chromo_list_file')
+  inFile = open(list_filename)
+  while 1:
+    line = inFile.readline()
+    if not line:
+      break
+    if len(line) <= 1:
+      continue
+    vals = line.split()
+    # See if line begins with #
+    if (vals[0][0] != '#'):
+      referenceList.append(vals[0])
+      targetList.append(vals[1])
+  inFile.close()
+  # Number of files
+  numFiles = len(referenceList)
+
+  for indChromosome in xrange(numFiles):
+#    aRefFile = ''.join([refFile, str(whichChromosome+1), '.fas'])
+#    aTargetFile = ''.join([targetFile, str(whichChromosome+1), '.fas'])
+#    aTargetFile = targetFile + str(indChromosome+1) + '.fas'
+    aRefFile = referenceList[indChromosome]
+    aTargetFile = targetList[indChromosome] 
+    if seq2Search4 == '':       # extract all the chromosomes
+      (extractedSeq, hitsCount, targetLength) = inCompressi.manipulateSingleChromosome(aRefFile, indChromosome, 0, 0, outHead, aTargetFile, BlockSize,        
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+      ## fix 2 for memory consumption
+      extractedSeq = ''
+    else:
+      ## adding delimiters for indexes of each chromosome : CHRxx  
+      for Indcs in searchIndcs: 
+        Indcs.append('CHR' + str(indChromosome+1) + '->')
+      (seqIndcs, hitsCount) = inCompressi.searchSingleChromosome(aRefFile, indChromosome, 0, 0, outHead, BlockSize, seq2Search4, searchIndcs,
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+  if len(seq2Search4) > 0:             
+    #print "%d overall hits\n " %overallHits 
+    #println         
+    if renderResultsToConsole == 1:
+      for i in xrange(len(seq2Search4)):
+        Indcs = searchIndcs[i] 
+        print "\n%s : %d overall hits ->\n " %(seq2Search4[i],len(Indcs)-5), "first 5 hits: ", Indcs[:5], "last 5 hits: ", Indcs[-5:]
+      print '\n'
+  
+if(timing == 1):
+    t1 = time()
+
+if(timing == 1):
+  sometime = ((t1-t0)*1000)
+  if renderResultsToConsole == 1:
+    print 'inCompressi  : %f msec\n' %sometime
+
+if memory == 1:
+  memUse = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+  memUse = memUse / 1024.0 
+  if renderResultsToConsole == 1:
+    print 'Memory Usage : %f MB \n' %memUse
+    #print 'Chromosome Size : %d MB \n' %(targetLength/(1024*1024))
+
+
+############################################## SAVING RESULTS ################################################################
+
+results = ConfigParser.ConfigParser()
+
+if renderResultsToFile == 1:
+  results.add_section('statistics')
+  if timing == 1:
+    results.set('statistics', 'time_in_msec', int(round(sometime)))
+  if memory == 1:
+    results.set('statistics', 'memory_in_mb', int(round(memUse)))
+  if whichChromosome <> -2:           # avoid printing entire genome/chromosome because they should be already rendered in fasta files
+    if pickOrSearch == 'pick' and subseqLength <> 0:    
+        results.add_section('browse_output')
+        results.set('browse_output', 'sequence', extractedSeq)  
+        results.set('browse_output', 'sequence_offset', subseqStart)  
+        results.set('browse_output', 'length_in_chars', len(extractedSeq))
+    elif pickOrSearch == 'search':
+        results.add_section('search_output')
+        hits = searchIndcs[0]
+        hitsStr = ",".join([str(i) for i in hits]) 
+        results.set('search_output', 'hits_count', len(searchIndcs[0]))  
+        results.set('search_output', 'hits', hitsStr)  
+         
+with open('inCompressi.out.cnfg', 'wb') as resultsFile:
+  results.write(resultsFile)
+    
+############################################## END SAVING RESULTS ################################################################

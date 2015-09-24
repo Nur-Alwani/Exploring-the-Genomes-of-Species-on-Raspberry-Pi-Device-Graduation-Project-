@@ -1,0 +1,41 @@
+
+fill by 'e' if you want to perform extraction, or 's' if you want to perfrom search
+extract_or_search = s
+
+fill by the pattern you want to search by. use contiguous dashes '-' to experss contiguous wildcards.
+pattern = TTTTT-----AAAAA
+
+filled in all cases. fill by file name when specific chromosome should be referenced (tair8/chr1.fas). fill by file name prefix (tair8/chr) when overall genome should be referenced (chromosome by chromosome) 
+reference_file = tair8/chr
+
+filled in all cases. fill by the prefix of the files holding the compressed genome.
+compressed_files_prefix = tair/tair_
+
+filled in case overall decompression of chromosome/genome will be done. fill by file name when specific chromosome should be decompressed (tair9/chr1.fas). fill by file name prefix (tair9/chr) when overall genome should be decompressed (chromosome by chromosome) 
+target_file = tair9/chr
+
+fill by 1-based integer value representing the chromosome to be attempted. fill by -1 when all the genome will be attempted
+which_chromosome = -1
+
+fill by 0 if extraction/search will be performed instruction by instruction regardless of the matching instruction length. (may require huge memory/more runtime)
+fill by 1 if extraction/search will be performed in specific block size: 100, 1000, 10000, 100000, 1000000, 10000000 ... 10000 is the best
+in_blocks = 1
+
+fill by the block size you prefer. you must set in_blocks to 1
+block_size = 10000
+
+fill by the offset you want to start searching/extraction.
+seq_offset = 0
+
+fill by the length by which the searching/extraction will be limited within inside a chromosome. use 0 when you want to attempt all the chromosome
+seq_length = 0
+
+fill by 1 if you want to:
+save the extracted sequence/chromosome/genome into file(s). partial sequences will be saved into raw/plain files, not FASTA
+save the search results (indexes and content of found patterns)
+save_to_file = 1
+
+fill be an integer representing the first n results you want to get. use 0 if you want to get all results.
+get_n_results = 0
+
+

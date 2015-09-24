@@ -1,0 +1,17 @@
+[flags]
+timing_on = 1
+memory_on = 1
+render_results_to_console = 0
+render_results_to_file = 1
+pick_or_search = pick
+
+[parameters]
+default_block_size = 10000
+reference_file = tair8_plain/chr3.fas
+which_chromosome = 3
+query_start = 0
+query_length = 500
+path_to_compressed = tair9_compressed/tair_
+target_file = tair9/TAIR9_chr1.fas
+search_queries = AACCGGTT--------AACCGGTT
+
