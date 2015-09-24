@@ -1,0 +1,427 @@
+#!/usr/bin/python
+import sys
+sys.path.append('lib/')
+import os
+import loc
+import bits
+import huff
+import lzmatch
+import chromeMap
+from time import time
+import resource
+
+timing = 1
+
+# Switch to do substitutions, insertions, and deletions
+doSub = 1
+doIns = 1
+doDel = 1
+
+# Use Golomb coding for the codebook
+golombFlag = 1
+
+# memFlag = 1 means keep everything in memory
+memFlag = 0
+
+# Get the process id, which is needed if memFlag is 0
+myPid = os.getpid()
+tempRefFile         = "tmp/reference.Temp" + str(myPid)
+tempTargetFile      = "tmp/target.Temp" + str(myPid)
+tempInstructionFile = "tmp/instruction.Temp" + str(myPid)
+tempSubFile         = "tmp/sub.Temp" + str(myPid)
+tempInsFile         = "tmp/ins.Temp" + str(myPid)
+tempDelFile         = "tmp/del.Temp" + str(myPid)
+
+############################################################################################################################
+
+# This program takes as input a single file.  The file contains a list of
+# reference-target pairs, and will compress the target based on the reference.
+
+if (len(sys.argv) == 1):
+  print >> sys.stderr, "Program use:"
+  print >> sys.stderr, sys.argv[0] + " <file list>"
+  print >> sys.stderr, "<file list> has format:"
+  print >> sys.stderr, "<reference file> <target file>"
+  print >> sys.stderr, "Any line that begins with # will be ignored"
+  sys.exit()
+
+outHead = sys.argv[2]
+
+# Get list of files
+try:
+  inFile = open(sys.argv[1])
+except IOError:
+  print >> sys.stderr, "Input file " + sys.argv[1] + " not found!"
+  sys.exit()
+
+############################################################################################################################
+
+if(timing == 1):
+    t0 = time()
+
+############################################################################################################################
+
+targetList    = []
+referenceList = []
+
+# reading/memorizing the reference/target file list and skipping commented lines
+## reading list of filenames for reference/target chromosomes
+while 1:
+  line = inFile.readline()
+  if not line:
+    break
+  if len(line) <= 1:
+    continue
+
+  vals = line.split()
+  # See if line begins with #
+  if (vals[0][0] != '#'):
+    referenceList.append(vals[0])
+    targetList.append(vals[1])
+inFile.close()
+
+# Number of files
+numFiles = len(referenceList)
+
+# Summarize which file pairs with what
+summarize = 0
+if (summarize == 1):
+  for ind in xrange(numFiles):
+    print referenceList[ind] + " <-> " + targetList[ind]
+
+############################################################################################################################
+
+# For each file, find the matches between the target and reference
+## make 3D arrays with:
+##    length "numFiles" - a unique row for each reference/target file/chromosome,
+##    width "4" - a column for (instru.s; substtu.s; ins.s; del.s), 
+##    3rd direction - contains info about (position, length, old char, new char) for each (instru, substtu, ins, del)  
+## describing the mapping between reference/target
+
+instructionList = [0]*numFiles
+headers         = [0]*numFiles
+subList         = [0]*numFiles
+insList         = [0]*numFiles
+delList         = [0]*numFiles
+numElements     = [0]*numFiles
+totalElements   = 0
+
+# Go through each file, generate the LZ-like instructions
+# Once we have the LZ-like instructions, split into substitutions, insertions, and deletions
+## parallel: can process each file separately.
+for ind in xrange(numFiles):
+  # Find the LZ like matches 
+  ## MUST HAVE memory=1 IN ORDER TO GET INSTRUCTIONS INTO THE instructionList INSTEAD OF OUTPUTING THEM INTO A TEMP FILE
+  (headers[ind], instructionList[ind], numInstructions) = lzmatch.getMatches(referenceList[ind], targetList[ind], memFlag, tempRefFile, tempTargetFile, tempInstructionFile+"_"+str(ind))
+
+  # Split the LZ matches into substitions
+  #### substtu.s talk about a target char to be substituted at given target position in the target seq. (during rebuilding immature target from the ref. seq.)  
+  if doSub == 1:
+    (instructionList[ind], subList[ind], numInstructions, numSub) = lzmatch.splitSubs(instructionList[ind], memFlag, tempInstructionFile+"_"+str(ind), numInstructions, tempSubFile+"_"+str(ind))
+  else:
+    numSub = 0
+    subList[ind] = []
+
+  # Split the LZ matches into insertions
+  #### ins.s talk about a target char to be inserted at given target position in the target seq. (during rebuilding immature target from the ref. seq.) 
+  if doIns == 1:
+    (instructionList[ind], insList[ind], numInstructions, numIns) = lzmatch.splitIns(instructionList[ind], memFlag, tempInstructionFile+"_"+str(ind), numInstructions, tempInsFile+"_"+str(ind))
+  else:
+    numIns = 0
+    insList[ind] = []
+
+  # Split the LZ matches into deletions                    ## passing ref. again to dels
+  #### del.s talk about a target char(s) to be deleted at given target position in the target seq. (during rebuilding immature target from the ref. seq.)
+  if doDel == 1:
+    (instructionList[ind], delList[ind], numInstructions, numDel) = lzmatch.splitDel(instructionList[ind], referenceList[ind], memFlag, tempRefFile, tempInstructionFile+"_"+str(ind), numInstructions, tempDelFile+"_"+str(ind))
+  else:
+    numDel = 0
+    delList[ind] = []
+
+  numElements[ind] = [numInstructions, numSub, numIns, numDel]
+
+  # We double the number in instructionList (and delList) because there is a
+  # position and location (deletion length) associated with each entry
+  ## instru.s and del.s each holds 2 integers, however, substtu.s and ins.s each holds 1 integer 
+  totalElements = totalElements + 2*numInstructions + numSub + numIns + 2*numDel
+
+############################################################################################################################
+
+# Make an integer vector that we will be compressed using Huffman
+## parallel: can parallize collecting int.s of each file
+intVec  = [0]*totalElements
+count   = 0
+signs   = ''
+for ind in xrange(numFiles):
+                #************************************ process instru.s
+  prevInt = 0
+  # Collect everything from the instructions
+  if memFlag == 0:
+    instructionTemp = open(tempInstructionFile+"_"+str(ind), 'r')
+  for ind2 in xrange(numElements[ind][0]):                  ## traversing Instru.s (at column 0 of the numElements 3D array) resulting from EACH file/chromosome 
+    if memFlag == 1:
+      val1 = instructionList[ind][ind2][0]                  ## getting position of instru. [ind2] of file/chromosome [ind]
+      val2 = instructionList[ind][ind2][1]                  ## getting length of instru. [ind2] of file/chromosome [ind]
+    else:
+      myLine = instructionTemp.readline()
+      vals = myLine.split()
+      val1 = int(vals[0])
+      val2 = int(vals[1])
+    # Get the relative position
+    intVec[count] = abs(val1-prevInt)                     ## adding (delta coding of) position of current instru. w.r.t prev. instru. (position+length)
+    count   = count + 1
+
+    # Get the absolute length                            ## adding length of current instru.
+    intVec[count] = val2
+    count   = count + 1
+
+    # Get the sign of the relative position
+    ## Why?? can relative positions of successive instru.s be -ve??
+    ## yes, because (prev.pos+prev.len) may be > curr.pos
+    if (val1-prevInt) > 0:
+      signs = signs + '0'
+    else:
+      signs = signs + '1'
+
+    prevInt = val1 + val2                               ## updating the prev.int with the (position+length) of the current instru. 
+  if memFlag == 0:
+    instructionTemp.close()
+
+                ##################################### End process instru.s
+                #************************************ process substtu.s
+  prevInt = 0
+  # Collect everything from the substitutions
+  if doSub == 1:
+    if memFlag == 0:
+      subTemp = open(tempSubFile+"_"+str(ind), 'r')
+    for ind2 in xrange(numElements[ind][1]):            ## fetching the column of substtu.s of the given files
+      if memFlag == 1:
+        val1 = subList[ind][ind2][0]                    ## getting the substtu. position
+      else:
+        myLine = subTemp.readline()
+        vals = myLine.split()
+        val1 = int(vals[0])
+      # Get the relative position
+      intVec[count] = val1-prevInt                      ## adding relative pos.
+      prevInt = val1
+      if intVec[count]<0:
+        print "subs"
+      count   = count + 1
+    if memFlag == 0:
+      subTemp.close()
+    
+                ##################################### End process substtu.s
+                #************************************ process ins.s
+
+  prevInt = 0
+  # Collect everything from the insertions
+  if doIns == 1:
+    if memFlag == 0:
+      insTemp = open(tempInsFile+"_"+str(ind), 'r')
+    for ind2 in xrange(numElements[ind][2]):            ## fetching the column of ins.s of the given files
+      if memFlag == 1:
+        val1 = insList[ind][ind2][0]                    ## getting the ins. position
+      else:
+        myLine = insTemp.readline()
+        vals = myLine.split()
+        val1 = int(vals[0])
+      # Get the relative position
+      intVec[count] = val1-prevInt                      ## adding the ins. position
+      prevInt = val1
+      if intVec[count]<0:
+        print "ins"
+      count   = count + 1
+    if memFlag == 0:
+      insTemp.close()
+
+                ##################################### End process ins.s
+                #************************************ process del.s
+
+  prevInt = 0
+  # Collect everything from the deletions
+  if doDel == 1:
+    if memFlag == 0:
+      delTemp = open(tempDelFile+"_"+str(ind), 'r')
+    for ind2 in xrange(numElements[ind][3]):            ## fetching the column of del.s of the given files
+      if memFlag == 1:
+        val1 = delList[ind][ind2][0]                    ## getting the del. position
+        val2 = delList[ind][ind2][1]                    ## getting the del. length
+      else:
+        myLine = delTemp.readline()
+        vals = myLine.split()
+        val1 = int(vals[0])
+        val2 = int(vals[1])
+      # Get the relative position
+      intVec[count] = val1-prevInt                      ## adding relative position
+      prevInt = val1
+      if intVec[count]<0:
+        print "dels"
+      count   = count + 1
+  
+      intVec[count] = val2                              ## adding the del. length
+      count   = count + 1
+    if memFlag == 0:
+      delTemp.close()
+                ##################################### End process del.s      
+
+############################################################################################################################
+
+## adding meta-data to the int.s vector 
+# Append to the front of this list the number of elements we expect for each chromosome
+for ind in xrange(numFiles-1, -1,-1):
+  intVec = numElements[ind] + intVec                ## adding (as a header to the intVec) the num. of int.s related to each file/chromosome
+intVec = [numFiles] + intVec                        ## adding the num of chromosomes/files processed
+
+# One more integer: the number of base pairs per line
+## will be used during decompression to format the decompressed files to be exactly as the original fasta files
+inFile = open(targetList[0])
+inFile.readline()
+basePairsPerLine = len(inFile.readline()) - 1 # Don't count the newline character
+inFile.close()
+intVec = [basePairsPerLine] + intVec
+
+# Turn the list of locations into a tuple of (frequency, location)
+symbolTupleList = huff.listToSymbolTupleList(intVec)
+
+# Generate huffman code of differences
+diffHuffTable = huff.makeHuffTable(symbolTupleList)
+
+# Write out the huffman table
+f = open(outHead + 'codebook.ido', 'wb')
+if golombFlag == 1:
+  huff.writeGolombCodedHuffTable(diffHuffTable, f)
+else:
+  huff.writeHuffTable(diffHuffTable, f)
+f.close()
+
+############################################################################################################################
+
+# Write a bit file using our huffman code for the locations
+f = open(outHead + 'data.ido', 'wb')
+remainder = 0
+numLeft = 0
+for i in xrange(len(intVec)):
+  (remainder, numLeft) = bits.stringToBitsOut(diffHuffTable[str(intVec[i])], f, remainder, numLeft)
+## write signs of relative positions -- obtained from the instru.s stored at the int. vector
+(remainder, numLeft) = bits.stringToBitsOut(signs, f, remainder, numLeft)
+bits.flushBitsOutput(f, remainder, numLeft)
+f.close()
+
+############################################################################################################################
+
+# Write out the base pairs
+## writing chars hold by instru.s, substtu.s, and ins.s
+f = open(outHead + 'char.ido', 'wb')
+remainder = 0
+numLeft   = 0
+## traversing chromosome files
+for ind in xrange(numFiles):
+  if memFlag == 0:
+    instructionTemp = open(tempInstructionFile+"_"+str(ind), 'r')
+    
+  # Character associated with instruction
+  ## traversing the instructions of the current chromosome file
+  for ind2 in xrange(numElements[ind][0]):
+    if memFlag == 1:
+      old = instructionList[ind][ind2][3]
+      new = instructionList[ind][ind2][2]
+    else:
+      myLine = instructionTemp.readline()
+      vals = myLine.split()
+      old = vals[3]
+      new = vals[2]
+    bitsOut = chromeMap.chromeToBit[old+new]                ## get special huffman encoding for the 2-char tuple
+    LenOfBitsOut = len(bitsOut)
+    LenOfBitsOut = bits.intToFixedBits(LenOfBitsOut, 3)    
+    (remainder, numLeft) = bits.stringToBitsOut(LenOfBitsOut, f, remainder, numLeft)
+    (remainder, numLeft) = bits.stringToBitsOut(bitsOut, f, remainder, numLeft)
+  if memFlag == 0:
+    instructionTemp.close()
+
+                                #####################################################
+
+  # Character associated with insertion
+  if doIns == 1:
+    if memFlag == 0:
+      insTemp = open(tempInsFile+"_"+str(ind), 'r')
+    for ind2 in xrange(numElements[ind][2]):
+      if memFlag == 1:
+        old =insList[ind][ind2][2]
+        new =insList[ind][ind2][1]
+      else:
+        myLine = insTemp.readline()
+        vals = myLine.split()
+        old = vals[2]
+        new = vals[1]
+      bitsOut = chromeMap.chromeToBit[old+new]
+      LenOfBitsOut = len(bitsOut)
+      LenOfBitsOut = bits.intToFixedBits(LenOfBitsOut, 3)    
+      (remainder, numLeft) = bits.stringToBitsOut(LenOfBitsOut, f, remainder, numLeft)
+      (remainder, numLeft) = bits.stringToBitsOut(bitsOut, f, remainder, numLeft)
+    if memFlag == 0:
+      insTemp.close()
+
+                                #####################################################
+
+  # Character associated with substitution
+  if doSub == 1:
+    if memFlag == 0:
+      subTemp = open(tempSubFile+"_"+str(ind), 'r')
+    for ind2 in xrange(numElements[ind][1]):
+      if memFlag == 1:
+        old = subList[ind][ind2][2]
+        new = subList[ind][ind2][1]
+      else:
+        myLine = subTemp.readline()
+        vals = myLine.split()
+        old = vals[2]
+        new = vals[1]
+      bitsOut = chromeMap.chromeToBit[old+new]
+      LenOfBitsOut = len(bitsOut)
+      LenOfBitsOut = bits.intToFixedBits(LenOfBitsOut, 3)    
+      (remainder, numLeft) = bits.stringToBitsOut(LenOfBitsOut, f, remainder, numLeft)
+      (remainder, numLeft) = bits.stringToBitsOut(bitsOut, f, remainder, numLeft)
+    if memFlag == 0:
+      subTemp.close()
+
+bits.flushBitsOutput(f, remainder, numLeft)
+f.close()
+
+############################################################################################################################
+
+# Write out the headers
+f = open(outHead + 'headers.ido', 'w')
+for ind in xrange(numFiles):
+  f.write(headers[ind]+"\n")
+f.close()
+
+############################################################################################################################
+
+if(timing == 1):
+    t1 = time()
+
+############################################################################################################################
+
+if(timing == 1):
+    print 'time taken = %f' %(t1-t0)
+
+############################################################################################################################
+## removing temp files
+#if memFlag == 0:
+#  os.remove(tempRefFile)
+#  os.remove(tempTargetFile)
+#  for ind in xrange(numFiles):
+#    os.remove(tempInstructionFile+"_"+str(ind))
+#    if doSub == 1:
+#      os.remove(tempSubFile+"_"+str(ind))
+#    if doIns == 1:
+#      os.remove(tempInsFile+"_"+str(ind))
+#    if doDel == 1:
+#      os.remove(tempDelFile+"_"+str(ind))
+
+############################################################################################################################
+
+memUse = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+memUse = memUse / 1024.0 
+print 'Memory Usage : %d MB \n' %memUse
+#print 'Chromosome Size : %d MB \n' %(chromeLen/(1024*1024))

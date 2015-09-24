@@ -1,0 +1,57 @@
+#!/usr/bin/python
+import sys
+from mimify import File
+from time import time
+
+t0 = time()
+
+if (len(sys.argv) == 1):
+  print >> sys.stderr, "Program use: need 2 filenames to compare!"
+
+# open first file
+try:
+  inFile1 = open(sys.argv[1])
+except IOError:
+  print >> sys.stderr, "Input file " + sys.argv[1] + " not found!"
+  sys.exit()
+
+# open second file
+try:
+  inFile2 = open(sys.argv[2])
+except IOError:
+  print >> sys.stderr, "Input file " + sys.argv[2] + " not found!"
+  sys.exit()
+
+count = 0
+files_match = 1
+first_bad_line = -1
+
+# start comparing files line by line
+while 1:
+  line1 = inFile1.readline()
+  line2 = inFile2.readline()
+  if not line1 and not line2:
+    break
+  else:
+    if not line1 or not line2:
+      files_match = 0
+      break
+  count += 1
+  if line1 <> line2:
+    files_match = 0
+    first_bad_line = count
+    break
+ 
+inFile1.close()
+inFile2.close()
+
+if files_match:
+    print "GREAT !!"
+else:
+    print "Oh No !! first bad line: %d" %first_bad_line
+    print line1
+    print line2
+
+t1 = time()
+
+print 'time taken = %f\n' %(t1-t0)
