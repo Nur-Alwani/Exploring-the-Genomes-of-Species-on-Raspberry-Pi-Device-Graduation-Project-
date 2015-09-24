@@ -1,0 +1,15 @@
+tair8/chr1.fas tair9_inCompressi/TAIR9_chr1.fas   
+tair8/chr2.fas tair9_inCompressi/TAIR9_chr2.fas    
+tair8/chr3.fas tair9_inCompressi/TAIR9_chr3.fas   
+tair8/chr4.fas tair9_inCompressi/TAIR9_chr4.fas  
+tair8/chr5.fas tair9_inCompressi/TAIR9_chr5.fas  
+tair8/chr6.fas tair9_inCompressi/TAIR9_chr6.fas   
+tair8/chr7.fas tair9_inCompressi/TAIR9_chr7.fas    
+tair8/chr8.fas tair9_inCompressi/TAIR9_chr8.fas   
+tair8/chr9.fas tair9_inCompressi/TAIR9_chr9.fas  
+tair8/chr10.fas tair9_inCompressi/TAIR9_chr10.fas  
+tair8/chr11.fas tair9_inCompressi/TAIR9_chr11.fas   
+tair8/chr12.fas tair9_inCompressi/TAIR9_chr12.fas    
+tair8/chrA.fas tair9_inCompressi/TAIR9_chrA.fas   
+tair8/chrB.fas tair9_inCompressi/TAIR9_chrB.fas  
+tair8/chrC.fas tair9_inCompressi/TAIR9_chrC.fas  

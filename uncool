@@ -1,0 +1,164 @@
+#!/usr/bin/python
+import sys
+sys.path.append('lib/')
+import os
+import loc
+import bits
+import huff
+import lzmatch
+from time import time
+import resource
+
+timing = 1
+
+# memFlag = 1 means keep everything in memory
+memFlag = 0
+
+############################################################################################################################
+
+# Get the process id, which is needed if memFlag is 0
+myPid = os.getpid()
+tempRefFile    = "tmp/reference.Temp" + str(myPid)
+tempTargetFile = "tmp/target.Temp" + str(myPid)
+
+# This program takes as input a single file.  The file contains a list of
+# reference-target pairs, and will compress the target based on the reference.
+if (len(sys.argv) == 1):
+  print >> sys.stderr, "Program use:"
+  print >> sys.stderr, sys.argv[0] + " <file list>"
+  print >> sys.stderr, "<file list> has format:"
+  print >> sys.stderr, "<reference file> <target file>"
+  print >> sys.stderr, "Any line that begins with # will be ignored"
+  sys.exit()
+
+# Get list of files
+try:
+  inFile = open(sys.argv[1])
+except IOError:
+  print >> sys.stderr, "Input file " + sys.argv[1] + " not found!"
+  sys.exit()
+
+############################################################################################################################
+
+if(timing == 1):
+    t0 = time()
+
+############################################################################################################################
+
+targetList    = []
+referenceList = []
+
+while 1:
+  line = inFile.readline()
+  if not line:
+    break
+  if len(line) <= 1:
+    continue
+
+  vals = line.split()
+
+  # See if line begins with #
+  if (vals[0][0] != '#'):
+    referenceList.append(vals[0])
+    targetList.append(vals[1])
+inFile.close()
+
+# Number of files
+numFiles1 = len(referenceList)
+
+# Summarize which file pairs with what
+summarize = 0
+if (summarize == 1):
+  for ind in xrange(numFiles1):
+    print referenceList[ind] + " <-> " + targetList[ind]
+
+############################################################################################################################
+
+# Load codebook of integers
+# The codebook filename
+outHead = sys.argv[2]
+codebookFilename  = outHead+'codebook.ido'
+integerFilename   = outHead+'data.ido'
+characterFilename = outHead+'char.ido'
+headerFilename    = outHead+'headers.ido'
+
+# Read in the headers
+myHeaders = []
+f = open(headerFilename, 'rb')
+for ind in xrange(numFiles1):
+  temp = f.readline()
+  myHeaders.append(temp[:-1])
+f.close()
+
+############################################################################################################################
+
+# Read in the codebook
+f = open(codebookFilename, 'rb')
+huffTable = huff.readGolombCodedHuffTable(f)
+f.close()
+
+# Start reading in the integers
+f = open(integerFilename,'rb')
+(basePairsPerLine, numFiles, instructionList, subList, insList, delList) = lzmatch.getLists(f, huffTable)
+f.close()
+
+if numFiles != numFiles1:
+  print >> sys.stderr, "Reference files supplied (", numFiles1, ") does not match number of files in compressed data (", numFiles, "). Exiting."
+  sys.exit()
+    
+############################################################################################################################
+
+# Generate the chromosomes
+f = open(characterFilename, 'rb')
+temp = ''
+for ind in xrange(numFiles):
+  (myChrome, chromeLen, temp) = lzmatch.getChromosome(referenceList[ind], instructionList[ind], subList[ind], insList[ind], delList[ind], f, temp, memFlag, tempRefFile, tempTargetFile)
+  # Write out the chromosome
+  f2 = open(targetList[ind], 'w')
+
+  # Print a header if there is one
+  if len(myHeaders[ind]) > 0:
+    f2.write(myHeaders[ind] + "\n")
+
+  ## writing lined file from the generated non-lined data
+  if memFlag == 1:
+    lines = (len(myChrome)-1)/basePairsPerLine
+    for ind in xrange(lines):
+      f2.write(myChrome[ind*basePairsPerLine:(ind+1)*basePairsPerLine] + "\n")
+    remainder = myChrome[(ind+1)*basePairsPerLine:-1]
+    if remainder <> '':
+      f2.write(remainder+"\n")
+  else:
+    f3 = open(tempTargetFile, 'r')
+    lines = (len(myChrome)-1)/basePairsPerLine
+    for ind in xrange((chromeLen-1)/basePairsPerLine):
+      f2.write(f3.read(basePairsPerLine)+ "\n")
+    lastLine = f3.read(basePairsPerLine)
+    if len(lastLine) > 0:
+      f2.write(lastLine+"\n")
+    f3.close()
+  f2.close()
+f.close()
+
+############################################################################################################################
+
+if(timing == 1):
+    t1 = time()
+
+############################################################################################################################
+
+if(timing == 1):
+    print 'time taken = %f' %(t1-t0)
+
+############################################################################################################################
+
+#if memFlag == 0:
+#  os.remove(tempRefFile)
+#  os.remove(tempTargetFile)
+
+############################################################################################################################
+
+memUse = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+memUse = memUse / 1024.0 
+print 'Memory Usage : %d MB \n' %memUse
+#print 'Chromosome Size : %d MB \n' %(chromeLen/(1024*1024))

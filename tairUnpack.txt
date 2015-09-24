@@ -1,0 +1,6 @@
+tair8/chr1.fas tair/TAIR9_chr1_new.fas   
+tair8/chr2.fas tair/TAIR9_chr2_new.fas    
+tair8/chr3.fas tair/TAIR9_chr3_new.fas   
+tair8/chr4.fas tair/TAIR9_chr4_new.fas   
+tair8/chr5.fas tair/TAIR9_chr5_new.fas  
+
