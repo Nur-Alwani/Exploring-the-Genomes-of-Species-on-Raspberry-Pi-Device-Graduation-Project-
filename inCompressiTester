@@ -1,0 +1,157 @@
+#!/usr/bin/python
+import sys
+import SubseqPicker
+sys.path.append('lib/')
+import os
+import loc
+import bits
+import huff
+import lzmatch
+import inCompressi
+from time import time
+from twisted.python.util import println
+import resource
+
+
+timing = 1
+
+BlockSize = 100000
+
+
+## check the input parameters
+if (len(sys.argv) == 1):
+  print >> sys.stderr, "Program use:"
+  print >> sys.stderr, sys.argv[0] + " <chromosome number> <subsequence start position> <subsequence length> <out header>" 
+  sys.exit()
+
+# Get list of params
+refFile = sys.argv[1]
+whichChromosome = int(sys.argv[2])
+whichChromosome -= 1 
+subseqStart = int(sys.argv[3])
+subseqLength = int(sys.argv[4])
+outHead = sys.argv[5]
+
+
+searchIndcs = []
+
+if len(sys.argv) == 7:
+  tmp = sys.argv[6]
+  if tmp[0] <> '@':
+    targetFile = tmp
+    seq2Search4 = ''
+  else:
+    targetFile = ''
+    seq2Search4 = tmp[1:]
+    seq2Search4 = seq2Search4.split(',')
+    searchIndcs = [[] for _ in range(len(seq2Search4))] 
+
+
+if(timing == 1):
+    t0 = time()
+
+## load the compressed data once
+(basePairsPerLine, numFiles, instructionList, subList, insList, delList) = inCompressi.loadEncodedLists(outHead)   
+
+extractedSeq = ''
+if whichChromosome <> -2:
+  if len(seq2Search4) == 0:
+    (extractedSeq, hitsCount, targetLength) = inCompressi.manipulateSingleChromosome(refFile, whichChromosome, subseqStart, subseqLength, outHead, targetFile, BlockSize,
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+    #print "incompressi", extractedSeq, "\n"
+  else:
+    (seqIndcs, hitsCount) = inCompressi.searchSingleChromosome(refFile, whichChromosome, subseqStart, subseqLength, outHead, BlockSize, seq2Search4, searchIndcs,
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+    #print "%d hits -> " %len(seqIndcs), seqIndcs[:5], seqIndcs[-5:]
+    for Indcs in searchIndcs: 
+      print "%d hits -> " %len(Indcs), "first 5 hits: ", Indcs[:5], "last 5 hits: ", Indcs[-5:]
+    println
+else:       # decompress all chromosome (the whole genome)
+  overallHits = 0  
+  for indChromosome in xrange(5):
+#    aRefFile = ''.join([refFile, str(whichChromosome+1), '.fas'])
+#    aTargetFile = ''.join([targetFile, str(whichChromosome+1), '.fas'])
+    aRefFile = refFile + str(indChromosome+1) + '.fas'
+    aTargetFile = targetFile + str(indChromosome+1) + '.fas'
+    if seq2Search4 == '':       # extract all the chromosomes
+      (extractedSeq, hitsCount, targetLength) = inCompressi.manipulateSingleChromosome(aRefFile, indChromosome, 0, 0, outHead, aTargetFile, BlockSize,        
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+      ## fix 2 for memory consumption
+      extractedSeq = ''
+    else:
+      ## adding delimiters for indexes of each chromosome : CHRxx  
+      for Indcs in searchIndcs: 
+        Indcs.append('CHR' + str(indChromosome+1) + '->')
+      (seqIndcs, hitsCount) = inCompressi.searchSingleChromosome(aRefFile, indChromosome, 0, 0, outHead, BlockSize, seq2Search4, searchIndcs,
+                                                                                     basePairsPerLine, numFiles, instructionList, subList, insList, delList)
+      #overallHits += len(seqIndcs)
+      #print "Chromosome %d - %d hits -> " %(indChromosome+1, len(seqIndcs)), seqIndcs[:10] 
+      println
+  if len(seq2Search4) > 0:             
+    #print "%d overall hits\n " %overallHits 
+    #println         
+    for i in xrange(len(seq2Search4)):
+      Indcs = searchIndcs[i] 
+      print "\n%s : %d overall hits ->\n " %(seq2Search4[i],len(Indcs)-5), "first 5 hits: ", Indcs[:5], "last 5 hits: ", Indcs[-5:]
+    print '\n'
+  #seqIndcs = wholeSeqIndcs    
+
+if(timing == 1):
+    t1 = time()
+
+memUse = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+memUse = memUse / 1024.0 
+
+originalSubseq = ''
+if len(sys.argv) == 7 and whichChromosome <> -2 and targetFile <> '':
+  (Tfile, TheaderSize, Tlinelen, Theader) = SubseqPicker.openAndPrepare(targetFile)
+  originalSubseq = SubseqPicker.PickSubseq(Tfile, subseqStart, subseqLength, TheaderSize, Tlinelen)
+  #print "seqpicker", originalSubseq, "\n"
+  #originalSubseq += 't'
+  SubseqPicker.finalizeAndClose(Tfile)
+
+if(timing == 1):
+    t2 = time()
+
+if whichChromosome <> -2:
+  # printing the subsequence
+  if len(sys.argv) < 7:
+    println
+    print extractedSeq
+    println
+    print hitsCount
+    println
+  else:
+    if extractedSeq == originalSubseq and seq2Search4 == '':
+      #println  
+      sys.stdout.write("OK - ")
+      #println
+      #print extractedSeq
+      #println
+      #print hitsCount
+    else:
+      print '\n'
+      ind = 0
+      while ind < subseqLength:
+        if extractedSeq[ind:ind+100] <> originalSubseq[ind:ind+100]:
+          print "origin index of the probblem: %d\n" %ind  
+          println
+          print extractedSeq[ind:ind+100]
+          println
+          print originalSubseq[ind:ind+100]
+          println
+          break
+        ind += 100  
+  #    print extractedSubseq
+  #    print '\n'
+  #    print originalSubseq
+  #    print '\n'
+
+sys.stdout.write('Memory: %d MB - ' %memUse)
+#print 'Chromosome Size : %d MB \n' %(targetLength/(1024*1024))
+
+if(timing == 1):
+  sys.stdout.write('Time: %d msec\n' %((t1-t0)*1000))
+#  if len(sys.argv) == 7:
+#    print 'SubseqPicker : %f sec\n' %(t2-t1)
+
