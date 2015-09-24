@@ -1,0 +1,3 @@
+
+r_hg18/chr1.fa  t_yh/chr1.fa   
+
